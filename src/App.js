@@ -1369,10 +1369,7 @@ function AppDrawer(props) {
           <ParameterSlider min={0} max={100} step={1} value={props.edgeWander} onChange={(e, c) => props.onChange({ edgeWander: c })} title="Edge wander" tooltip="Bias fractal midpoints to follow detected edges — line wanders along contours" />
         </ListItem>
         <ListItem>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-            <span style={{ fontSize: '14px' }}>Spring coil effect</span>
-            <input type="checkbox" checked={props.springEnabled} onChange={(e) => props.onChange({ springEnabled: e.target.checked })} style={{ marginLeft: '10px' }} />
-          </div>
+          <ParameterCheckbox value={props.springEnabled} onChange={(e, c) => props.onChange({ springEnabled: c })} title="Spring coil effect" tooltip="Draw continuous concentric coils instead of straight lines" />
         </ListItem>
         {props.springEnabled && (
           <>
