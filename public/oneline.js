@@ -24,6 +24,57 @@ function perpDisplace(ox, oy, ax, ay, bx, by, amount, t) {
   return [ox + nx * d, oy + ny * d];
 }
 
+// Generate a spring/coil path between two points - creates a continuous "stretched spring" effect
+// The spring oscillates perpendicular to the main path direction
+function generateSpringPath(x0, y0, x1, y1, amplitude, frequency, spacing, rng) {
+  const dx = x1 - x0, dy = y1 - y0;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 0.001) return `L ${x1} ${y1}\n`;
+  
+  // Normalize direction vector
+  const ux = dx / len, uy = dy / len;
+  // Perpendicular vector for oscillation
+  const px = -uy, py = ux;
+  
+  // Calculate number of segments based on spacing
+  const segmentCount = Math.max(1, Math.ceil(len / spacing));
+  const stepLen = len / segmentCount;
+  
+  let out = '';
+  let prevX = x0, prevY = y0;
+  
+  for (let i = 1; i <= segmentCount; i++) {
+    const t = i / segmentCount;
+    const baseX = x0 + dx * t;
+    const baseY = y0 + dy * t;
+    
+    // Spring oscillation: sin wave with given frequency
+    const phase = t * frequency * Math.PI * 2;
+    const offset = Math.sin(phase) * amplitude;
+    
+    const x = baseX + px * offset;
+    const y = baseY + py * offset;
+    
+    if (i === 1) {
+      out += `L ${x} ${y}\n`;
+    } else {
+      // Use quadratic curves for smoother spring appearance
+      const midX = (prevX + x) / 2;
+      const midY = (prevY + y) / 2;
+      out += `Q ${prevX} ${prevY} ${midX} ${midY}\n`;
+    }
+    prevX = x;
+    prevY = y;
+  }
+  
+  // Ensure we end exactly at the target point
+  if (segmentCount > 0) {
+    out += `L ${x1} ${y1}\n`;
+  }
+  
+  return out;
+}
+
 // Edge-aware fractal subdivision: at each midpoint, blend perpendicular fractal displacement
 // with a displacement along the edge gradient direction (wandering along edges).
 // img may be null (no edge wander when edgeWander=0 or image unavailable).
@@ -1076,7 +1127,7 @@ class Points {
     const pts = this.points;
     const cfg = this.config;
     const maxReachSq = cfg.maxReach * cfg.maxReach;
-    const anyEffect = cfg.noiseAmplitude > 0 || cfg.fractalAmplitude > 0 || cfg.edgeWander > 0;
+    const anyEffect = cfg.noiseAmplitude > 0 || cfg.fractalAmplitude > 0 || cfg.edgeWander > 0 || cfg.springEnabled;
     const rng = anyEffect ? makePRNG(cfg.seed ^ 0xBEEF0002) : null;
     const img = this.image;
     let current = this.startId;
@@ -1092,7 +1143,10 @@ class Points {
         if (cfg.noiseAmplitude > 0) {
           [ex, ey] = perpDisplace(ex, ey, pts[current].x, pts[current].y, ex, ey, cfg.noiseAmplitude, rng());
         }
-        if (cfg.fractalAmplitude > 0 || cfg.edgeWander > 0) {
+        // Spring/coil effect takes priority when enabled - creates continuous concentric pattern
+        if (cfg.springEnabled) {
+          out += generateSpringPath(pts[current].x, pts[current].y, ex, ey, cfg.springAmplitude, cfg.springFrequency, cfg.springSpacing, rng);
+        } else if (cfg.fractalAmplitude > 0 || cfg.edgeWander > 0) {
           out += fractalSubdivideEdge(pts[current].x, pts[current].y, ex, ey, 2, cfg.fractalAmplitude, cfg.edgeWander, rng, img);
         } else {
           out += `L ${ex} ${ey}\n`;
@@ -1137,7 +1191,7 @@ class Points {
     }
 
     const maxReachSq = cfg.maxReach * cfg.maxReach;
-    const anyEffect = cfg.noiseAmplitude > 0 || cfg.fractalAmplitude > 0 || cfg.controlPointNoise > 0 || cfg.edgeWander > 0;
+    const anyEffect = cfg.noiseAmplitude > 0 || cfg.fractalAmplitude > 0 || cfg.controlPointNoise > 0 || cfg.edgeWander > 0 || cfg.springEnabled;
     const rng = anyEffect ? makePRNG(cfg.seed ^ 0xCAFE0003) : null;
     const img = this.image;
 
@@ -1167,27 +1221,34 @@ class Points {
           [ex, ey] = perpDisplace(ex, ey, pts[current].x, pts[current].y, ex, ey, cfg.noiseAmplitude, rng());
         }
 
-        const angle = turningAngle(pts[previous], pts[current], pts[next]);
-        const straight = angle < straightThreshold;
 
-        if (straight) {
+        // Spring/coil effect takes priority when enabled - creates continuous concentric pattern
+        if (cfg.springEnabled) {
           if (inCurve) { out += `\n`; inCurve = false; }
-          if (cfg.fractalAmplitude > 0 || cfg.edgeWander > 0) {
-            out += fractalSubdivideEdge(pts[current].x, pts[current].y, ex, ey, 2, cfg.fractalAmplitude, cfg.edgeWander, rng, img);
-          } else {
-            out += `L ${ex} ${ey}\n`;
-          }
+          out += generateSpringPath(pts[current].x, pts[current].y, ex, ey, cfg.springAmplitude, cfg.springFrequency, cfg.springSpacing, rng);
         } else {
-          if (!inCurve) { out += `C\n`; inCurve = true; }
-          let [cx1, cy1, cx2, cy2] = splineControls(pts[previous], pts[current], pts[next], pts[future !== NO_ID ? future : next]);
-          if (cfg.controlPointNoise > 0) {
-            const n = cfg.controlPointNoise;
-            cx1 += (rng() * 2 - 1) * n;
-            cy1 += (rng() * 2 - 1) * n;
-            cx2 += (rng() * 2 - 1) * n;
-            cy2 += (rng() * 2 - 1) * n;
+          const angle = turningAngle(pts[previous], pts[current], pts[next]);
+          const straight = angle < straightThreshold;
+
+          if (straight) {
+            if (inCurve) { out += `\n`; inCurve = false; }
+            if (cfg.fractalAmplitude > 0 || cfg.edgeWander > 0) {
+              out += fractalSubdivideEdge(pts[current].x, pts[current].y, ex, ey, 2, cfg.fractalAmplitude, cfg.edgeWander, rng, img);
+            } else {
+              out += `L ${ex} ${ey}\n`;
+            }
+          } else {
+            if (!inCurve) { out += `C\n`; inCurve = true; }
+            let [cx1, cy1, cx2, cy2] = splineControls(pts[previous], pts[current], pts[next], pts[future !== NO_ID ? future : next]);
+            if (cfg.controlPointNoise > 0) {
+              const n = cfg.controlPointNoise;
+              cx1 += (rng() * 2 - 1) * n;
+              cy1 += (rng() * 2 - 1) * n;
+              cx2 += (rng() * 2 - 1) * n;
+              cy2 += (rng() * 2 - 1) * n;
+            }
+            out += `${cx1},${cy1} ${cx2},${cy2} ${ex},${ey}\n`;
           }
-          out += `${cx1},${cy1} ${cx2},${cy2} ${ex},${ey}\n`;
         }
         previous = current;
       }
@@ -1576,6 +1637,11 @@ function makeConfig(w, h, opts) {
     fractalAmplitude:  opts.fractalAmplitude  != null ? sw(opts.fractalAmplitude)  : 0, // px at ref scale
     controlPointNoise: opts.controlPointNoise != null ? sw(opts.controlPointNoise) : 0, // px at ref scale
     edgeWander:        opts.edgeWander        != null ? opts.edgeWander        : 0, // 0–100 strength
+    // ── Spring/Coil effect (continuous concentric "stretched spring" pattern) ─
+    springEnabled:     opts.springEnabled     != null ? !!opts.springEnabled     : false, // enable spring coil rendering
+    springAmplitude:   opts.springAmplitude   != null ? sw(opts.springAmplitude)  : 5, // px - amplitude of oscillation
+    springFrequency:   opts.springFrequency   != null ? opts.springFrequency    : 3, // cycles per segment
+    springSpacing:     opts.springSpacing     != null ? sw(opts.springSpacing)    : 4, // px - distance between coils
     // ── Stitch mode ──────────────────────────────────────────────────────────
     stitchMode: opts.stitchMode || 'oneline', // 'oneline'|'satin'|'fill'|'running'|'cross'
   };
