@@ -409,6 +409,10 @@ class App extends React.Component {
       fractalAmplitude: 0,
       controlPointNoise: 0,
       edgeWander: 0,
+      springEnabled: false,
+      springAmplitude: 5,
+      springFrequency: 3,
+      springSpacing: 4,
     };
   }
 
@@ -1364,6 +1368,25 @@ function AppDrawer(props) {
         <ListItem>
           <ParameterSlider min={0} max={100} step={1} value={props.edgeWander} onChange={(e, c) => props.onChange({ edgeWander: c })} title="Edge wander" tooltip="Bias fractal midpoints to follow detected edges — line wanders along contours" />
         </ListItem>
+        <ListItem>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+            <span style={{ fontSize: '14px' }}>Spring coil effect</span>
+            <input type="checkbox" checked={props.springEnabled} onChange={(e) => props.onChange({ springEnabled: e.target.checked })} style={{ marginLeft: '10px' }} />
+          </div>
+        </ListItem>
+        {props.springEnabled && (
+          <>
+            <ListItem>
+              <ParameterSlider min={1} max={20} step={0.5} value={props.springAmplitude} onChange={(e, c) => props.onChange({ springAmplitude: c })} title="Spring amplitude" tooltip="Height of the spring oscillation in pixels" />
+            </ListItem>
+            <ListItem>
+              <ParameterSlider min={1} max={10} step={0.5} value={props.springFrequency} onChange={(e, c) => props.onChange({ springFrequency: c })} title="Spring frequency" tooltip="Number of coil cycles per segment" />
+            </ListItem>
+            <ListItem>
+              <ParameterSlider min={1} max={15} step={0.5} value={props.springSpacing} onChange={(e, c) => props.onChange({ springSpacing: c })} title="Coil spacing" tooltip="Distance between coils in pixels" />
+            </ListItem>
+          </>
+        )}
         <ListItem>
           <ParameterSlider min={1} max={30} value={31 - props.maxDensity} onChange={(e, c) => props.onChange({ maxDensity: 31 - c })} title="Density" tooltip="Controls line spacing — lower = denser lines across all brightness areas" />
         </ListItem>
